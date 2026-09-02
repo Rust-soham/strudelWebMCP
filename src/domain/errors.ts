@@ -11,6 +11,11 @@ export class DraftReadFailed extends TaggedError('DraftReadFailed')<{
   readonly message: string;
 }> {}
 
+export class DraftWriteFailed extends TaggedError('DraftWriteFailed')<{
+  readonly cause: unknown;
+  readonly message: string;
+}> {}
+
 export class StrudelEvaluationFailed extends TaggedError('StrudelEvaluationFailed')<{
   readonly cause: unknown;
   readonly message: string;
@@ -33,6 +38,16 @@ export class CheckpointWriteFailed extends TaggedError('CheckpointWriteFailed')<
   readonly message: string;
 }> {}
 
+export class CheckpointReadFailed extends TaggedError('CheckpointReadFailed')<{
+  readonly cause: unknown;
+  readonly message: string;
+}> {}
+
+export class CheckpointNotFound extends TaggedError('CheckpointNotFound')<{
+  readonly checkpointId: CheckpointId;
+  readonly message: string;
+}> {}
+
 export class StaleCheckpoint extends TaggedError('StaleCheckpoint')<{
   readonly expectedParentId: CheckpointId | null;
   readonly actualParentId: CheckpointId | null;
@@ -52,3 +67,5 @@ export type RunIterationError =
   | CheckpointWriteFailed
   | StaleCheckpoint
   | OperationCancelled;
+
+export type RestoreCheckpointError = CheckpointNotFound | CheckpointReadFailed | DraftWriteFailed;

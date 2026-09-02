@@ -1,4 +1,4 @@
-import { Result, type Result as ResultType } from 'better-result';
+import { Result } from 'better-result';
 
 import type { RunIterationError } from './errors.ts';
 import type { Checkpoint, RunIterationCommand } from './model.ts';
@@ -7,7 +7,7 @@ import type { RunIterationDependencies } from './ports.ts';
 export type RunIteration = (
   command: RunIterationCommand,
   signal: AbortSignal,
-) => Promise<ResultType<Checkpoint, RunIterationError>>;
+) => Promise<Result<Checkpoint, RunIterationError>>;
 
 /**
  * Composes browser, audio, analysis, and persistence boundaries into one checkpoint.

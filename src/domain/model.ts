@@ -1,4 +1,4 @@
-import { Result, TaggedError, type Result as ResultType } from 'better-result';
+import { Result, TaggedError } from 'better-result';
 
 declare const checkpointIdBrand: unique symbol;
 declare const strudelCodeBrand: unique symbol;
@@ -15,7 +15,7 @@ export class InvalidStrudelCode extends TaggedError('InvalidStrudelCode')<{
   readonly message: string;
 }> {}
 
-export const checkpointId = (input: string): ResultType<CheckpointId, InvalidCheckpointId> => {
+export const checkpointId = (input: string): Result<CheckpointId, InvalidCheckpointId> => {
   const value = input.trim();
 
   if (value.length === 0) {
@@ -26,7 +26,7 @@ export const checkpointId = (input: string): ResultType<CheckpointId, InvalidChe
   return Result.ok(value as CheckpointId);
 };
 
-export const strudelCode = (input: string): ResultType<StrudelCode, InvalidStrudelCode> => {
+export const strudelCode = (input: string): Result<StrudelCode, InvalidStrudelCode> => {
   if (input.trim().length === 0) {
     return Result.err(new InvalidStrudelCode({ message: 'Strudel code cannot be empty' }));
   }
@@ -46,6 +46,11 @@ export type DraftProgram = Readonly<{
   baseCheckpointId: CheckpointId | null;
   code: StrudelCode;
   changeSummary: string;
+}>;
+
+export type RestoredProgram = Readonly<{
+  baseCheckpointId: CheckpointId;
+  code: StrudelCode;
 }>;
 
 export type EvaluatedProgram = Readonly<{

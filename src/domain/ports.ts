@@ -1,10 +1,13 @@
-import type { Result as ResultType } from 'better-result';
+import type { Result } from 'better-result';
 
 import type {
   AnalysisFailed,
   AttemptRenderFailed,
+  CheckpointNotFound,
+  CheckpointReadFailed,
   CheckpointWriteFailed,
   DraftReadFailed,
+  DraftWriteFailed,
   OperationCancelled,
   ReferenceNotLoaded,
   StaleCheckpoint,
@@ -13,21 +16,25 @@ import type {
 import type {
   Checkpoint,
   CheckpointCandidate,
+  CheckpointId,
   Comparison,
   DraftProgram,
   EvaluatedProgram,
   ReferenceAudio,
   RenderDuration,
   RenderedAttempt,
+  RestoredProgram,
   StrudelCode,
 } from './model.ts';
 
 export interface ProgramWorkspace {
   /** Reads the current editor state without owning editor undo history. */
-  getDraft(): ResultType<DraftProgram, DraftReadFailed>;
+  getDraft(): Result<DraftProgram, DraftReadFailed>;
   evaluate(
     code: StrudelCode,
-  ): Promise<ResultType<EvaluatedProgram, StrudelEvaluationFailed | OperationCancelled>>;
+  ): Promise<Result<EvaluatedProgram, StrudelEvaluationFailed | OperationCancelled>>;
+  /** Replaces the editor draft and makes subsequent attempts branch from this checkpoint. */
+  restore(program: RestoredProgram): Result<void, DraftWriteFailed>;
 }
 
 export interface AttemptRenderer {
@@ -36,11 +43,11 @@ export interface AttemptRenderer {
     program: EvaluatedProgram,
     duration: RenderDuration,
     signal: AbortSignal,
-  ): Promise<ResultType<RenderedAttempt, AttemptRenderFailed | OperationCancelled>>;
+  ): Promise<Result<RenderedAttempt, AttemptRenderFailed | OperationCancelled>>;
 }
 
 export interface ReferenceRepository {
-  get(): Promise<ResultType<ReferenceAudio, ReferenceNotLoaded>>;
+  get(): Promise<Result<ReferenceAudio, ReferenceNotLoaded>>;
 }
 
 export interface SimilarityAnalyzer {
@@ -49,14 +56,15 @@ export interface SimilarityAnalyzer {
     reference: ReferenceAudio,
     attempt: RenderedAttempt,
     signal: AbortSignal,
-  ): Promise<ResultType<Comparison, AnalysisFailed | OperationCancelled>>;
+  ): Promise<Result<Comparison, AnalysisFailed | OperationCancelled>>;
 }
 
 export interface CheckpointRepository {
+  getById(id: CheckpointId): Promise<Result<Checkpoint, CheckpointNotFound | CheckpointReadFailed>>;
   /** Atomically appends an immutable attempt under its expected parent. */
   commit(
     candidate: CheckpointCandidate,
-  ): Promise<ResultType<Checkpoint, CheckpointWriteFailed | StaleCheckpoint | OperationCancelled>>;
+  ): Promise<Result<Checkpoint, CheckpointWriteFailed | StaleCheckpoint | OperationCancelled>>;
 }
 
 export type RunIterationDependencies = Readonly<{

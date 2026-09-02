@@ -1,4 +1,4 @@
-import { Result, type Result as ResultType } from 'better-result';
+import { Result } from 'better-result';
 import { describe, expect, it, vi } from 'vitest';
 
 import {
@@ -11,7 +11,7 @@ import {
   type RunIterationDependencies,
 } from '../src/domain/index.ts';
 
-const unwrap = <Value, Error>(result: ResultType<Value, Error>): Value => {
+const unwrap = <Value, Error>(result: Result<Value, Error>): Value => {
   if (result.isErr()) throw result.error;
   return result.value;
 };
@@ -49,6 +49,7 @@ const makeDependencies = (): RunIterationDependencies => ({
       Result.ok({ baseCheckpointId: parentId, code, changeSummary: 'Changed the notes' }),
     ),
     evaluate: vi.fn(async () => Result.ok({ code, cycleDurationSeconds: 1 })),
+    restore: vi.fn(() => Result.ok(undefined)),
   },
   attemptRenderer: {
     render: vi.fn(async () => Result.ok(renderedAttempt)),
@@ -57,6 +58,17 @@ const makeDependencies = (): RunIterationDependencies => ({
     compare: vi.fn(async () => Result.ok(comparison)),
   },
   checkpointRepository: {
+    getById: vi.fn(async () =>
+      Result.ok(
+        checkpoint({
+          parentId,
+          code,
+          audio: renderedAttempt,
+          comparison,
+          changeSummary: 'Changed the notes',
+        }),
+      ),
+    ),
     commit: vi.fn(async (candidate) => Result.ok(checkpoint(candidate))),
   },
 });
