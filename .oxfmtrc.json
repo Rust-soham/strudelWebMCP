@@ -1,0 +1,6 @@
+{
+  "ignorePatterns": ["tools/oxlint/anti-slop/**"],
+  "printWidth": 100,
+  "singleQuote": true,
+  "trailingComma": "all"
+}
