@@ -73,7 +73,10 @@ const putCheckpoint = (db: IDBDatabase, checkpoint: Checkpoint): Promise<void> =
     tx.onerror = () => reject(tx.error);
   });
 
-const hasIndexedDb = (): boolean => typeof indexedDB !== 'undefined';
+const hasIndexedDb = (): boolean => {
+  // oxlint-disable-next-line anti-slop/no-runtime-typeof -- IndexedDB is optional; feature detection requires typeof.
+  return typeof indexedDB !== 'undefined';
+};
 
 /** Durable checkpoint history that survives page reloads. Falls back to memory when IndexedDB is unavailable. */
 export class IndexedDbCheckpointRepository implements CheckpointRepository {

@@ -137,6 +137,25 @@ export const App = (): React.JSX.Element => {
   }, [checkpointRepository]);
 
   useEffect(() => {
+    let cancelled = false;
+    void referenceRepository.waitUntilReady().then(async () => {
+      if (cancelled) return;
+      const result = await referenceRepository.get();
+      if (result.isOk()) {
+        const restored = result.value;
+        setReference({
+          tag: 'ready',
+          message: `${restored.durationSeconds.toFixed(2)}s file · comparing first ${Math.min(restored.durationSeconds, referenceComparisonWindowSeconds).toFixed(2)}s · ${restored.sampleRate.toLocaleString()} Hz · ${restored.numberOfChannels} channel${restored.numberOfChannels === 1 ? '' : 's'} · restored`,
+          reference: restored,
+        });
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [referenceRepository]);
+
+  useEffect(() => {
     if (reference.tag !== 'ready') {
       setReferenceUrl(null);
       return;

@@ -24,15 +24,88 @@ const decodeWithWebAudio: DecodeReferenceAudio = async (encodedAudio) => {
 
 const createReferenceId: CreateReferenceId = () => crypto.randomUUID();
 
+const referenceDbName = 'strudel-webmcp-reference';
+const referenceStoreName = 'reference';
+const referenceKey = 'current';
+
+const hasIndexedDb = (): boolean => {
+  // oxlint-disable-next-line anti-slop/no-runtime-typeof -- IndexedDB is optional; feature detection requires typeof.
+  return typeof indexedDB !== 'undefined';
+};
+
+const openReferenceDatabase = (): Promise<IDBDatabase> =>
+  new Promise((resolve, reject) => {
+    const request = indexedDB.open(referenceDbName, 1);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(referenceStoreName)) {
+        db.createObjectStore(referenceStoreName);
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+
+const persistReference = async (reference: ReferenceAudio): Promise<void> => {
+  if (!hasIndexedDb()) return;
+  try {
+    const db = await openReferenceDatabase();
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(referenceStoreName, 'readwrite');
+      tx.objectStore(referenceStoreName).put(reference, referenceKey);
+      tx.oncomplete = () => {
+        db.close();
+        resolve();
+      };
+      tx.onerror = () => reject(tx.error);
+    });
+  } catch {
+    // Persistence is best-effort; keep in-memory behaviour on failure.
+  }
+};
+
+const loadPersistedReference = async (): Promise<ReferenceAudio | null> => {
+  if (!hasIndexedDb()) return null;
+  try {
+    const db = await openReferenceDatabase();
+    const stored = await new Promise<ReferenceAudio | null>((resolve, reject) => {
+      const tx = db.transaction(referenceStoreName, 'readonly');
+      const request = tx.objectStore(referenceStoreName).get(referenceKey);
+      // SAFETY: Reference store contains only ReferenceAudio written by persistReference.
+      request.onsuccess = () => resolve((request.result as ReferenceAudio | null) ?? null);
+      request.onerror = () => reject(request.error);
+    });
+    db.close();
+    return stored;
+  } catch {
+    return null;
+  }
+};
+
 /** Stores the browser's currently loaded reference and decodes its acoustic metadata once. */
 export class BrowserReferenceRepository implements ReferenceRepository {
   private reference: ReferenceAudio | null = null;
+  private readonly ready: Promise<void>;
 
   /** Creates a repository with replaceable decode and identity boundaries for deterministic tests. */
   constructor(
     private readonly decode: DecodeReferenceAudio = decodeWithWebAudio,
     private readonly createId: CreateReferenceId = createReferenceId,
-  ) {}
+  ) {
+    this.ready = this.hydrate();
+  }
+
+  /** Resolves when any persisted reference has been restored. */
+  async waitUntilReady(): Promise<void> {
+    await this.ready;
+  }
+
+  private async hydrate(): Promise<void> {
+    const persisted = await loadPersistedReference();
+    if (persisted !== null) {
+      this.reference = persisted;
+    }
+  }
 
   /** Parses an uploaded audio file into the reference used by subsequent iterations. */
   async load(
@@ -72,6 +145,7 @@ export class BrowserReferenceRepository implements ReferenceRepository {
       } satisfies ReferenceAudio;
 
       this.reference = reference;
+      await persistReference(reference);
       return Result.ok(reference);
     } catch (cause) {
       return Result.err(
@@ -81,6 +155,26 @@ export class BrowserReferenceRepository implements ReferenceRepository {
           message: 'The selected file could not be decoded as audio',
         }),
       );
+    }
+  }
+
+  /** Clears the persisted reference. Useful for manual reset. */
+  async clear(): Promise<void> {
+    this.reference = null;
+    if (!hasIndexedDb()) return;
+    try {
+      const db = await openReferenceDatabase();
+      await new Promise<void>((resolve, reject) => {
+        const tx = db.transaction(referenceStoreName, 'readwrite');
+        tx.objectStore(referenceStoreName).delete(referenceKey);
+        tx.oncomplete = () => {
+          db.close();
+          resolve();
+        };
+        tx.onerror = () => reject(tx.error);
+      });
+    } catch {
+      // Best-effort.
     }
   }
 
