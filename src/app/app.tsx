@@ -5,7 +5,7 @@ import {
   referenceComparisonWindowSeconds,
 } from '../adapters/audio/energy-envelope-analyzer.ts';
 import { BrowserReferenceRepository } from '../adapters/browser/browser-reference-repository.ts';
-import { InMemoryCheckpointRepository } from '../adapters/browser/in-memory-checkpoint-repository.ts';
+import { IndexedDbCheckpointRepository } from '../adapters/browser/indexeddb-checkpoint-repository.ts';
 import { MediabunnyAudioNormalizer } from '../adapters/browser/mediabunny-audio-normalizer.ts';
 import { StrudelAttemptRenderer } from '../adapters/strudel/strudel-attempt-renderer.ts';
 import type { StrudelReplWorkspace } from '../adapters/strudel/strudel-repl-workspace.ts';
@@ -87,7 +87,7 @@ export const App = (): React.JSX.Element => {
     message: 'No attempt captured yet.',
   });
   const [referenceRepository] = useState(() => new BrowserReferenceRepository());
-  const [checkpointRepository] = useState(() => new InMemoryCheckpointRepository());
+  const [checkpointRepository] = useState(() => new IndexedDbCheckpointRepository());
   const [similarityAnalyzer] = useState(
     () => new EnergyEnvelopeAnalyzer(new MediabunnyAudioNormalizer()),
   );
@@ -114,6 +114,27 @@ export const App = (): React.JSX.Element => {
 
   referenceState.current = reference;
   captureState.current = capture;
+
+  useEffect(() => {
+    let cancelled = false;
+    void checkpointRepository.waitUntilReady().then(() => {
+      if (cancelled) return;
+      setCheckpoints(checkpointRepository.list());
+      setCurrentCheckpointId(checkpointRepository.getHeadId());
+      const latest = checkpointRepository.list().at(-1);
+      if (latest !== undefined) {
+        setCapture({
+          tag: 'ready',
+          message: `Restored ${latest.id} · ${latest.audio.durationSeconds.toFixed(2)} seconds`,
+          attempt: latest.audio,
+        });
+        setComparison({ tag: 'ready', comparison: latest.comparison });
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [checkpointRepository]);
 
   useEffect(() => {
     if (reference.tag !== 'ready') {
@@ -610,8 +631,28 @@ export const App = (): React.JSX.Element => {
           <p className="capture-message">
             {checkpoints.length === 0
               ? 'Successful evaluations will appear here.'
-              : `${checkpoints.length} committed attempt${checkpoints.length === 1 ? '' : 's'}`}
+              : `${checkpoints.length} committed attempt${checkpoints.length === 1 ? '' : 's'} · survives reload`}
           </p>
+          {checkpoints.length === 0 ? null : (
+            <button
+              className="file-button"
+              disabled={capture.tag === 'recording' || transitionIsPending}
+              onClick={() => {
+                void checkpointRepository.clear().then(() => {
+                  setCheckpoints([]);
+                  setCurrentCheckpointId(null);
+                  setCapture({ tag: 'idle', message: 'History cleared.' });
+                  setComparison({
+                    tag: 'idle',
+                    message: 'Capture an attempt to compare its energy contour.',
+                  });
+                });
+              }}
+              type="button"
+            >
+              Clear history
+            </button>
+          )}
         </div>
         <ol className="checkpoint-list">
           {checkpoints.map((checkpoint) => {
