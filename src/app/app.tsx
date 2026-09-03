@@ -465,15 +465,27 @@ export const App = (): React.JSX.Element => {
       if (signal.aborted) return toolError('operation_cancelled', 'Workspace read was cancelled');
       if (workspace === null)
         return toolError('workspace_not_ready', 'Strudel editor is not ready');
-      const draft = workspace.getDraft();
+      let draft = workspace.getDraft();
       if (draft.isErr()) return toolError(draft.error._tag, draft.error.message);
+
+      const headId = checkpointRepository.getHeadId();
+      if (headId !== null && draft.value.baseCheckpointId !== headId) {
+        const restored = await makeRestoreCheckpoint({
+          checkpointRepository,
+          programWorkspace: workspace,
+        })(headId);
+        if (restored.isErr()) return toolError(restored.error._tag, restored.error.message);
+
+        draft = workspace.getDraft();
+        if (draft.isErr()) return toolError(draft.error._tag, draft.error.message);
+      }
 
       return {
         ok: true,
         referenceLoaded: referenceState.current.tag === 'ready',
         referenceWindowSeconds: referenceComparisonWindowSeconds,
         operation: captureState.current.tag,
-        currentCheckpointId: checkpointRepository.getHeadId(),
+        currentCheckpointId: headId,
         checkpointCount: checkpointRepository.list().length,
         draft: draft.value,
       };
