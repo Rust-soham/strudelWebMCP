@@ -103,6 +103,7 @@ export const App = (): React.JSX.Element => {
   });
   const [checkpoints, setCheckpoints] = useState<ReadonlyArray<Checkpoint>>([]);
   const [currentCheckpointId, setCurrentCheckpointId] = useState<CheckpointId | null>(null);
+  const [checkpointHistoryReady, setCheckpointHistoryReady] = useState(false);
   const [webMcp, setWebMcp] = useState<WebMcpStatus>({
     tag: 'waiting',
     message: 'Waiting for the Strudel workspace…',
@@ -116,25 +117,47 @@ export const App = (): React.JSX.Element => {
   captureState.current = capture;
 
   useEffect(() => {
+    if (workspace === null) {
+      setCheckpointHistoryReady(false);
+      return;
+    }
+
     let cancelled = false;
-    void checkpointRepository.waitUntilReady().then(() => {
+    void checkpointRepository.waitUntilReady().then(async () => {
       if (cancelled) return;
-      setCheckpoints(checkpointRepository.list());
-      setCurrentCheckpointId(checkpointRepository.getHeadId());
-      const latest = checkpointRepository.list().at(-1);
-      if (latest !== undefined) {
+
+      const persistedCheckpoints = checkpointRepository.list();
+      const headId = checkpointRepository.getHeadId();
+      setCheckpoints(persistedCheckpoints);
+      setCurrentCheckpointId(headId);
+
+      if (headId !== null) {
+        const restored = await makeRestoreCheckpoint({
+          checkpointRepository,
+          programWorkspace: workspace,
+        })(headId);
+        if (cancelled) return;
+        if (restored.isErr()) {
+          setStatus({ tag: 'failed', message: restored.error.message });
+          return;
+        }
+
+        const checkpoint = restored.value;
         setCapture({
           tag: 'ready',
-          message: `Restored ${latest.id} · ${latest.audio.durationSeconds.toFixed(2)} seconds`,
-          attempt: latest.audio,
+          message: `Restored ${checkpoint.id} · ${checkpoint.audio.durationSeconds.toFixed(2)} seconds`,
+          attempt: checkpoint.audio,
         });
-        setComparison({ tag: 'ready', comparison: latest.comparison });
+        setComparison({ tag: 'ready', comparison: checkpoint.comparison });
+        setStatus({ tag: 'stopped', message: `Restored persisted checkpoint ${checkpoint.id}.` });
       }
+
+      setCheckpointHistoryReady(true);
     });
     return () => {
       cancelled = true;
     };
-  }, [checkpointRepository]);
+  }, [checkpointRepository, workspace]);
 
   useEffect(() => {
     let cancelled = false;
@@ -464,7 +487,7 @@ export const App = (): React.JSX.Element => {
   };
 
   useEffect(() => {
-    if (workspace === null) return;
+    if (workspace === null || !checkpointHistoryReady) return;
 
     let disposed = false;
     const registration = new AbortController();
@@ -507,7 +530,7 @@ export const App = (): React.JSX.Element => {
       disposed = true;
       registration.abort();
     };
-  }, [workspace]);
+  }, [checkpointHistoryReady, workspace]);
 
   const loadReference = async (event: ChangeEvent<HTMLInputElement>): Promise<void> => {
     const file = event.currentTarget.files?.item(0) ?? null;

@@ -65,12 +65,18 @@ const getAllCheckpoints = (db: IDBDatabase): Promise<ReadonlyArray<Checkpoint>> 
     request.onerror = () => reject(request.error);
   });
 
-const putCheckpoint = (db: IDBDatabase, checkpoint: Checkpoint): Promise<void> =>
+const commitCheckpoint = (
+  db: IDBDatabase,
+  checkpoint: Checkpoint,
+  meta: MetaRecord,
+): Promise<void> =>
   new Promise((resolve, reject) => {
-    const tx = db.transaction(storeCheckpoints, 'readwrite');
-    tx.objectStore(storeCheckpoints).put(checkpoint);
+    const tx = db.transaction([storeCheckpoints, storeMeta], 'readwrite');
+    tx.objectStore(storeCheckpoints).add(checkpoint);
+    tx.objectStore(storeMeta).put(meta);
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error);
   });
 
 const hasIndexedDb = (): boolean => {
@@ -136,9 +142,10 @@ export class IndexedDbCheckpointRepository implements CheckpointRepository {
 
     // Fallback: try direct IDB read for cross-tab consistency.
     if (this.db !== null) {
+      const db = this.db;
       try {
         const stored = await new Promise<Checkpoint | undefined>((resolve, reject) => {
-          const tx = this.db!.transaction(storeCheckpoints, 'readonly');
+          const tx = db.transaction(storeCheckpoints, 'readonly');
           const request = tx.objectStore(storeCheckpoints).get(id);
           // SAFETY: Checkpoints store returns Checkpoint or undefined for id lookup.
           request.onsuccess = () => resolve(request.result as Checkpoint | undefined);
@@ -206,8 +213,7 @@ export class IndexedDbCheckpointRepository implements CheckpointRepository {
 
     try {
       if (this.db !== null) {
-        await putCheckpoint(this.db, checkpoint);
-        await putMeta(this.db, {
+        await commitCheckpoint(this.db, checkpoint, {
           key: metaKey,
           headId: checkpoint.id,
           nextSequence: this.nextSequence + 1,
@@ -248,8 +254,9 @@ export class IndexedDbCheckpointRepository implements CheckpointRepository {
     this.headId = null;
     this.nextSequence = 1;
     if (this.db === null) return;
+    const db = this.db;
     await new Promise<void>((resolve, reject) => {
-      const tx = this.db!.transaction([storeCheckpoints, storeMeta], 'readwrite');
+      const tx = db.transaction([storeCheckpoints, storeMeta], 'readwrite');
       tx.objectStore(storeCheckpoints).clear();
       tx.objectStore(storeMeta).clear();
       tx.oncomplete = () => resolve();

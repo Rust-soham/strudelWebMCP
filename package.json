@@ -27,6 +27,7 @@
     "@types/react": "19.2.18",
     "@types/react-dom": "19.2.5",
     "@vitejs/plugin-react": "6.1.1",
+    "fake-indexeddb": "6.2.5",
     "oxfmt": "0.66.0",
     "oxlint": "1.81.0",
     "typescript": "7.0.2",
