@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useState, type ChangeEvent } from 'react';
 
 import { BrowserReferenceRepository } from '../adapters/browser/browser-reference-repository.ts';
+import { MediabunnyAudioNormalizer } from '../adapters/browser/mediabunny-audio-normalizer.ts';
+import { EnergyEnvelopeAnalyzer } from '../adapters/audio/energy-envelope-analyzer.ts';
 import { StrudelAttemptRenderer } from '../adapters/strudel/strudel-attempt-renderer.ts';
 import type { StrudelReplWorkspace } from '../adapters/strudel/strudel-repl-workspace.ts';
-import type { ReferenceAudio, RenderedAttempt } from '../domain/model.ts';
+import type { Comparison, ReferenceAudio, RenderedAttempt } from '../domain/model.ts';
 import { StrudelEditor } from './strudel-editor.tsx';
 
 const initialCode = `setcpm(112 / 4)
@@ -34,6 +36,12 @@ type ReferenceStatus =
   | Readonly<{ tag: 'ready'; message: string; reference: ReferenceAudio }>
   | Readonly<{ tag: 'failed'; message: string }>;
 
+type ComparisonStatus =
+  | Readonly<{ tag: 'idle'; message: string }>
+  | Readonly<{ tag: 'analyzing'; message: string }>
+  | Readonly<{ tag: 'ready'; comparison: Comparison }>
+  | Readonly<{ tag: 'failed'; message: string }>;
+
 /** The first browser shell proving the real Strudel editor and workspace adapter together. */
 export const App = (): React.JSX.Element => {
   const [workspace, setWorkspace] = useState<StrudelReplWorkspace | null>(null);
@@ -46,12 +54,19 @@ export const App = (): React.JSX.Element => {
     message: 'No attempt captured yet.',
   });
   const [referenceRepository] = useState(() => new BrowserReferenceRepository());
+  const [similarityAnalyzer] = useState(
+    () => new EnergyEnvelopeAnalyzer(new MediabunnyAudioNormalizer()),
+  );
   const [reference, setReference] = useState<ReferenceStatus>({
     tag: 'idle',
     message: 'Upload the original clip once. Every iteration will reuse it.',
   });
   const [referenceUrl, setReferenceUrl] = useState<string | null>(null);
   const [attemptUrl, setAttemptUrl] = useState<string | null>(null);
+  const [comparison, setComparison] = useState<ComparisonStatus>({
+    tag: 'idle',
+    message: 'Capture an attempt to compare its energy contour.',
+  });
 
   useEffect(() => {
     if (reference.tag !== 'ready') {
@@ -147,6 +162,7 @@ export const App = (): React.JSX.Element => {
     }
 
     setCapture({ tag: 'recording', message: 'Recording 4 complete cycles…' });
+    setComparison({ tag: 'idle', message: 'Waiting for the captured attempt…' });
     setStatus({ tag: 'starting', message: 'Starting captured playback…' });
 
     const draft = workspace.getDraft();
@@ -179,7 +195,21 @@ export const App = (): React.JSX.Element => {
       message: `Captured ${rendered.value.durationSeconds.toFixed(2)} seconds`,
       attempt: rendered.value,
     });
-    setStatus({ tag: 'stopped', message: 'Capture complete. Playback stopped.' });
+    setComparison({ tag: 'analyzing', message: 'Normalizing and comparing both recordings…' });
+    setStatus({ tag: 'stopped', message: 'Capture complete. Comparing energy contours…' });
+
+    const analyzed = await similarityAnalyzer.compare(
+      loadedReference.value,
+      rendered.value,
+      signal,
+    );
+    if (analyzed.isErr()) {
+      setComparison({ tag: 'failed', message: analyzed.error.message });
+      return;
+    }
+
+    setComparison({ tag: 'ready', comparison: analyzed.value });
+    setStatus({ tag: 'stopped', message: 'Capture and comparison complete.' });
   };
 
   const loadReference = async (event: ChangeEvent<HTMLInputElement>): Promise<void> => {
@@ -188,6 +218,7 @@ export const App = (): React.JSX.Element => {
     if (file === null) return;
 
     const previousReference = reference.tag === 'ready' ? reference.reference : null;
+    setComparison({ tag: 'idle', message: 'Capture a new attempt for this reference.' });
     setReference({ tag: 'loading', message: `Decoding ${file.name}…` });
     const loaded = await referenceRepository.load(file, new AbortController().signal);
     setReference(
@@ -288,6 +319,29 @@ export const App = (): React.JSX.Element => {
           </button>
           {attemptUrl === null ? null : (
             <audio aria-label="Captured Strudel attempt" controls src={attemptUrl} />
+          )}
+        </div>
+      </section>
+
+      <section className="comparison-panel" aria-labelledby="comparison-heading">
+        <div>
+          <p className="eyebrow">04 · COMPARISON</p>
+          <h2 id="comparison-heading">Energy envelope</h2>
+          {comparison.tag === 'ready' ? (
+            <p className="similarity-score">
+              {Math.round((comparison.comparison.measurements[0]?.similarity ?? 0) * 100)}%
+            </p>
+          ) : null}
+        </div>
+        <div className="comparison-result" role="status">
+          {comparison.tag === 'ready' ? (
+            <ul>
+              {comparison.comparison.observations.map((observation) => (
+                <li key={observation}>{observation}</li>
+              ))}
+            </ul>
+          ) : (
+            <p>{comparison.message}</p>
           )}
         </div>
       </section>

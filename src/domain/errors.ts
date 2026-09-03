@@ -43,6 +43,11 @@ export class AnalysisFailed extends TaggedError('AnalysisFailed')<{
   readonly message: string;
 }> {}
 
+export class AudioNormalizationFailed extends TaggedError('AudioNormalizationFailed')<{
+  readonly cause: unknown;
+  readonly message: string;
+}> {}
+
 export class CheckpointWriteFailed extends TaggedError('CheckpointWriteFailed')<{
   readonly cause: unknown;
   readonly retryable: boolean;

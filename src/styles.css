@@ -197,7 +197,8 @@ h2 {
 }
 
 .reference-panel,
-.attempt-panel {
+.attempt-panel,
+.comparison-panel {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(20rem, 1fr);
   align-items: center;
@@ -206,6 +207,34 @@ h2 {
   padding: 1.5rem;
   border: 1px solid var(--line);
   background: #101210;
+}
+
+.comparison-panel {
+  border-color: #4b504a;
+}
+
+.comparison-result {
+  color: var(--foreground);
+  font-family: 'IBM Plex Mono', 'SFMono-Regular', Consolas, monospace;
+  font-size: 0.85rem;
+  line-height: 1.6;
+}
+
+.comparison-result p,
+.comparison-result ul {
+  margin: 0;
+}
+
+.comparison-result ul {
+  padding-left: 1.25rem;
+}
+
+.similarity-score {
+  margin: 0.5rem 0 0;
+  color: var(--yellow);
+  font-family: 'IBM Plex Mono', 'SFMono-Regular', Consolas, monospace;
+  font-size: 2rem;
+  font-weight: 700;
 }
 
 .capture-message {
@@ -289,7 +318,8 @@ footer {
   }
 
   .reference-panel,
-  .attempt-panel {
+  .attempt-panel,
+  .comparison-panel {
     grid-template-columns: 1fr;
   }
 

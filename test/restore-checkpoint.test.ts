@@ -28,7 +28,7 @@ const checkpoint: Checkpoint = {
     durationSeconds: 4,
     mimeType: 'audio/webm',
   },
-  comparison: { measurements: [], warnings: [], completeness: 1 },
+  comparison: { measurements: [], observations: [], warnings: [], completeness: 1 },
   changeSummary: 'Initial rhythm',
   createdAt: new Date('2026-09-02T00:00:00.000Z'),
 };

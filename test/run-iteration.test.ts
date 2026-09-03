@@ -22,6 +22,7 @@ const checkpointIdA1 = unwrap(checkpointId('a1'));
 
 const comparison = {
   measurements: [{ name: 'tempo' as const, similarity: 0.75 }],
+  observations: ['Tempo is close'],
   warnings: [],
   completeness: 1,
 };

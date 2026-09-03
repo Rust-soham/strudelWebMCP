@@ -1,3 +1,6 @@
+overrides:
+  '@types/dom-webcodecs': 0.1.19
+
 minimumReleaseAgeExclude:
   - '@oxfmt/binding-android-arm-eabi@0.66.0'
   - '@oxfmt/binding-android-arm64@0.66.0'
@@ -40,3 +43,4 @@ minimumReleaseAgeExclude:
   - '@oxlint/plugins@1.81.0'
   - oxfmt@0.66.0
   - oxlint@1.81.0
+  - mediabunny@1.55.6

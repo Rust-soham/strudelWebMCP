@@ -2,6 +2,7 @@ import type { Result } from 'better-result';
 
 import type {
   AnalysisFailed,
+  AudioNormalizationFailed,
   AttemptRenderFailed,
   CheckpointNotFound,
   CheckpointReadFailed,
@@ -20,6 +21,7 @@ import type {
   Comparison,
   DraftProgram,
   EvaluatedProgram,
+  NormalizedAudio,
   ReferenceAudio,
   RenderDuration,
   RenderedAttempt,
@@ -58,6 +60,14 @@ export interface SimilarityAnalyzer {
     attempt: RenderedAttempt,
     signal: AbortSignal,
   ): Promise<Result<Comparison, AnalysisFailed | OperationCancelled>>;
+}
+
+export interface AudioNormalizer {
+  /** Decodes encoded audio into mono PCM at the application's comparison sample rate. */
+  normalize(
+    blob: Blob,
+    signal: AbortSignal,
+  ): Promise<Result<NormalizedAudio, AudioNormalizationFailed | OperationCancelled>>;
 }
 
 export interface CheckpointRepository {

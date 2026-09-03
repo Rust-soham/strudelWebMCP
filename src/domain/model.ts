@@ -71,6 +71,13 @@ export type RenderedAttempt = Readonly<{
   mimeType: string;
 }>;
 
+/** Mono PCM normalized for deterministic comparisons across encoded inputs. */
+export type NormalizedAudio = Readonly<{
+  samples: Float32Array;
+  sampleRate: number;
+  durationSeconds: number;
+}>;
+
 export type MeasurementName =
   | 'tempo'
   | 'onsetAlignment'
@@ -93,6 +100,7 @@ export type AnalysisWarning = Readonly<{
 
 export type Comparison = Readonly<{
   measurements: ReadonlyArray<Measurement>;
+  observations: ReadonlyArray<string>;
   warnings: ReadonlyArray<AnalysisWarning>;
   completeness: number;
 }>;
