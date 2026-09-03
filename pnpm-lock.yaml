@@ -11,6 +11,9 @@ importers:
       '@strudel/repl':
         specifier: 1.3.0
         version: 1.3.0(@codemirror/lint@6.9.7)
+      '@strudel/webaudio':
+        specifier: 1.3.0
+        version: 1.3.0
       better-result:
         specifier: 3.0.1
         version: 3.0.1

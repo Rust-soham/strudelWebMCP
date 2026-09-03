@@ -78,6 +78,13 @@ h1 {
   letter-spacing: -0.045em;
 }
 
+h2 {
+  margin: 0;
+  font-size: clamp(1.25rem, 2vw, 1.8rem);
+  font-weight: 560;
+  letter-spacing: -0.025em;
+}
+
 .status {
   display: flex;
   align-items: center;
@@ -189,6 +196,46 @@ h1 {
   min-height: 30rem;
 }
 
+.attempt-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(20rem, 1fr);
+  align-items: center;
+  gap: 2rem;
+  margin-top: 1rem;
+  padding: 1.5rem;
+  border: 1px solid var(--line);
+  background: #101210;
+}
+
+.capture-message {
+  margin: 0.65rem 0 0;
+  color: var(--muted);
+  font-family: 'IBM Plex Mono', 'SFMono-Regular', Consolas, monospace;
+  font-size: 0.8rem;
+}
+
+.capture-controls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 1rem;
+}
+
+.capture-button {
+  min-width: 12rem;
+  border-color: #ff746c;
+}
+
+.capture-button[data-state='recording'] {
+  color: #1b0705;
+  background: #ff746c;
+}
+
+audio {
+  width: min(100%, 22rem);
+  height: 2.5rem;
+}
+
 footer {
   padding: 1rem 0;
   color: #656a62;
@@ -208,6 +255,15 @@ footer {
 
   .workspace {
     margin-top: 1.5rem;
+  }
+
+  .attempt-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .capture-controls {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .workspace-bar {

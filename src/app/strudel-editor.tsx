@@ -1,4 +1,4 @@
-import '@strudel/repl';
+import '@strudel/repl/repl-component.mjs';
 
 import { useEffect, useRef } from 'react';
 
