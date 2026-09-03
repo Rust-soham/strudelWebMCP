@@ -5,6 +5,7 @@ import {
   DraftWriteFailed,
   OperationCancelled,
   StrudelEvaluationFailed,
+  StrudelPlaybackFailed,
 } from '../../domain/errors.ts';
 import { strudelCode } from '../../domain/model.ts';
 import type {
@@ -114,6 +115,53 @@ export class StrudelReplWorkspace implements ProgramWorkspace {
     code: StrudelCode,
     signal: AbortSignal,
   ): Promise<Result<EvaluatedProgram, StrudelEvaluationFailed | OperationCancelled>> {
+    return this.#evaluate(code, signal, 'remainStopped');
+  }
+
+  /** Evaluates the current source and starts Strudel's scheduler and native highlighting. */
+  async play(
+    code: StrudelCode,
+    signal: AbortSignal,
+  ): Promise<Result<EvaluatedProgram, StrudelEvaluationFailed | OperationCancelled>> {
+    return this.#evaluate(code, signal, 'start');
+  }
+
+  /** Writes a new draft while preserving CodeMirror's native undo history. */
+  writeDraft(draft: WriteStrudelDraft): Result<void, DraftWriteFailed> {
+    return this.#replaceDraft(draft.code, draft.baseCheckpointId, draft.changeSummary);
+  }
+
+  /** Restores source and makes the restored checkpoint the next branch parent. */
+  restore(program: RestoredProgram): Result<void, DraftWriteFailed> {
+    return this.#replaceDraft(program.code, program.baseCheckpointId, 'Restored checkpoint');
+  }
+
+  /** Stops scheduler playback without changing the current draft or branch metadata. */
+  async stop(): Promise<Result<void, StrudelPlaybackFailed>> {
+    const editor = this.#element.editor;
+
+    if (editor === null) {
+      return Result.err(
+        new StrudelPlaybackFailed({
+          cause: new Error('The strudel-editor element is not connected'),
+          message: 'Strudel editor is not ready',
+        }),
+      );
+    }
+
+    try {
+      await editor.stop();
+      return Result.ok(undefined);
+    } catch (cause) {
+      return Result.err(new StrudelPlaybackFailed({ cause, message: 'Could not stop Strudel' }));
+    }
+  }
+
+  async #evaluate(
+    code: StrudelCode,
+    signal: AbortSignal,
+    playback: 'start' | 'remainStopped',
+  ): Promise<Result<EvaluatedProgram, StrudelEvaluationFailed | OperationCancelled>> {
     if (signal.aborted) {
       return Result.err(new OperationCancelled({ message: 'Strudel evaluation was cancelled' }));
     }
@@ -131,7 +179,7 @@ export class StrudelReplWorkspace implements ProgramWorkspace {
 
     try {
       if (editor.code !== code) editor.setCode(code);
-      await editor.evaluate(false);
+      await editor.evaluate(playback === 'start');
     } catch (cause) {
       return Result.err(
         new StrudelEvaluationFailed({ cause, message: 'Strudel evaluation failed' }),
@@ -165,23 +213,6 @@ export class StrudelReplWorkspace implements ProgramWorkspace {
     }
 
     return Result.ok({ code, cycleDurationSeconds: 1 / cps });
-  }
-
-  /** Writes a new draft while preserving CodeMirror's native undo history. */
-  writeDraft(draft: WriteStrudelDraft): Result<void, DraftWriteFailed> {
-    return this.#replaceDraft(draft.code, draft.baseCheckpointId, draft.changeSummary);
-  }
-
-  /** Restores source and makes the restored checkpoint the next branch parent. */
-  restore(program: RestoredProgram): Result<void, DraftWriteFailed> {
-    return this.#replaceDraft(program.code, program.baseCheckpointId, 'Restored checkpoint');
-  }
-
-  /** Stops scheduler playback without changing the current draft or branch metadata. */
-  async stop(): Promise<void> {
-    const editor = this.#element.editor;
-
-    if (editor !== null) await editor.stop();
   }
 
   #replaceDraft(

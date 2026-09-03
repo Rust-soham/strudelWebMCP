@@ -21,6 +21,11 @@ export class StrudelEvaluationFailed extends TaggedError('StrudelEvaluationFaile
   readonly message: string;
 }> {}
 
+export class StrudelPlaybackFailed extends TaggedError('StrudelPlaybackFailed')<{
+  readonly cause: unknown;
+  readonly message: string;
+}> {}
+
 export class AttemptRenderFailed extends TaggedError('AttemptRenderFailed')<{
   readonly cause: unknown;
   readonly retryable: boolean;

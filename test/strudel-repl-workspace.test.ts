@@ -94,9 +94,20 @@ describe('StrudelReplWorkspace', () => {
     const workspace = new StrudelReplWorkspace(harness.element);
     const before = workspace.getDraft();
 
-    await workspace.stop();
+    const stopped = await workspace.stop();
 
+    expect(stopped.isOk()).toBe(true);
     expect(harness.stopped()).toBe(true);
     expect(workspace.getDraft()).toEqual(before);
+  });
+
+  it('starts playback through the same evaluated program boundary', async () => {
+    const harness = makeEditorHarness();
+    const workspace = new StrudelReplWorkspace(harness.element);
+
+    const result = await workspace.play(initialCode, new AbortController().signal);
+
+    expect(result.isOk()).toBe(true);
+    expect(harness.evaluatedWithAutostart).toEqual([true]);
   });
 });

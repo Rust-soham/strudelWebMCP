@@ -1,0 +1,216 @@
+:root {
+  color: #f2f0e7;
+  background: #080909;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  font-synthesis: none;
+  --background: #0d0f0e;
+  --foreground: #eeeade;
+  --yellow: #f2d94e;
+  --line: #30332f;
+  --muted: #8d9189;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background:
+    linear-gradient(rgb(242 217 78 / 4%) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(242 217 78 / 4%) 1px, transparent 1px), #080909;
+  background-size: 48px 48px;
+}
+
+button {
+  border: 1px solid var(--line);
+  padding: 0.65rem 1.1rem;
+  color: var(--foreground);
+  background: #171a18;
+  font: inherit;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: wait;
+  opacity: 0.45;
+}
+
+.app-shell {
+  width: min(1180px, calc(100% - 3rem));
+  margin: 0 auto;
+  padding: 2rem 0 1.5rem;
+}
+
+.masthead,
+.workspace-bar,
+footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+}
+
+.eyebrow,
+.workspace-bar,
+footer,
+.status {
+  font-family: 'IBM Plex Mono', 'SFMono-Regular', Consolas, monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.eyebrow {
+  margin: 0 0 0.5rem;
+  color: var(--yellow);
+}
+
+h1 {
+  margin: 0;
+  font-size: clamp(1.7rem, 4vw, 3.4rem);
+  font-weight: 520;
+  letter-spacing: -0.045em;
+}
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  max-width: 24rem;
+  color: var(--muted);
+}
+
+.status span {
+  width: 0.65rem;
+  height: 0.65rem;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: currentcolor;
+}
+
+.status-starting,
+.status-playing {
+  color: var(--yellow);
+}
+
+.status-stopping,
+.status-stopped {
+  color: #81c7ff;
+}
+
+.status-failed {
+  color: #ff746c;
+}
+
+.workspace {
+  margin-top: 2.5rem;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: var(--background);
+  box-shadow: 0 24px 90px rgb(0 0 0 / 45%);
+}
+
+.workspace-bar {
+  min-height: 3.75rem;
+  padding-left: 1rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.workspace-bar > div:first-child {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.panel-index {
+  color: var(--yellow);
+}
+
+.transport {
+  display: flex;
+  align-self: stretch;
+}
+
+.transport button {
+  min-width: 8.5rem;
+  border-width: 0 0 0 1px;
+  transition:
+    color 100ms ease,
+    background-color 100ms ease,
+    border-color 100ms ease,
+    transform 70ms ease;
+}
+
+.transport button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.transport button[data-state='ready'],
+.transport button[data-state='stopped'],
+.transport button[data-state='failed'] {
+  border-color: var(--yellow);
+  color: #11120f;
+  background: var(--yellow);
+}
+
+.transport button[data-state='starting'] {
+  border-color: #fff2a1;
+  color: #11120f;
+  background: #fff2a1;
+}
+
+.transport button[data-state='playing'] {
+  border-color: #ff746c;
+  color: #1b0705;
+  background: #ff746c;
+}
+
+.transport button[data-state='stopping'] {
+  border-color: #81c7ff;
+  color: #07131d;
+  background: #81c7ff;
+}
+
+.editor-mount {
+  min-height: 33rem;
+}
+
+.editor-mount > div {
+  min-height: 33rem;
+  padding: 1.25rem 0;
+}
+
+.editor-mount .cm-editor {
+  min-height: 30rem;
+}
+
+footer {
+  padding: 1rem 0;
+  color: #656a62;
+}
+
+@media (max-width: 720px) {
+  .app-shell {
+    width: min(100% - 1.25rem, 1180px);
+    padding-top: 1rem;
+  }
+
+  .masthead,
+  footer {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .workspace {
+    margin-top: 1.5rem;
+  }
+
+  .workspace-bar {
+    padding-left: 0.75rem;
+  }
+}
