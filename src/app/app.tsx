@@ -1,11 +1,30 @@
-import { useCallback, useEffect, useState, type ChangeEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type ChangeEvent } from 'react';
 
+import {
+  EnergyEnvelopeAnalyzer,
+  referenceComparisonWindowSeconds,
+} from '../adapters/audio/energy-envelope-analyzer.ts';
 import { BrowserReferenceRepository } from '../adapters/browser/browser-reference-repository.ts';
+import { InMemoryCheckpointRepository } from '../adapters/browser/in-memory-checkpoint-repository.ts';
 import { MediabunnyAudioNormalizer } from '../adapters/browser/mediabunny-audio-normalizer.ts';
-import { EnergyEnvelopeAnalyzer } from '../adapters/audio/energy-envelope-analyzer.ts';
 import { StrudelAttemptRenderer } from '../adapters/strudel/strudel-attempt-renderer.ts';
 import type { StrudelReplWorkspace } from '../adapters/strudel/strudel-repl-workspace.ts';
-import type { Comparison, ReferenceAudio, RenderedAttempt } from '../domain/model.ts';
+import {
+  registerWorkspaceTools,
+  type WorkspaceToolError,
+  type WorkspaceToolHandlers,
+  type WorkspaceToolResult,
+} from '../adapters/webmcp/register-workspace-tools.ts';
+import { makeRestoreCheckpoint } from '../domain/restore-checkpoint.ts';
+import { makeRunIteration } from '../domain/run-iteration.ts';
+import { strudelCode } from '../domain/model.ts';
+import type {
+  Checkpoint,
+  CheckpointId,
+  Comparison,
+  ReferenceAudio,
+  RenderedAttempt,
+} from '../domain/model.ts';
 import { StrudelEditor } from './strudel-editor.tsx';
 
 const initialCode = `setcpm(112 / 4)
@@ -42,6 +61,20 @@ type ComparisonStatus =
   | Readonly<{ tag: 'ready'; comparison: Comparison }>
   | Readonly<{ tag: 'failed'; message: string }>;
 
+type WebMcpStatus =
+  | Readonly<{ tag: 'waiting'; message: string }>
+  | Readonly<{ tag: 'connected'; message: string }>
+  | Readonly<{ tag: 'unsupported'; message: string }>
+  | Readonly<{ tag: 'failed'; message: string }>;
+
+const toolError = (code: string, message: string): WorkspaceToolError => ({
+  ok: false,
+  error: { code, message },
+});
+
+const checkpointSimilarity = (checkpoint: Checkpoint): number =>
+  checkpoint.comparison.measurements[0]?.similarity ?? 0;
+
 /** The first browser shell proving the real Strudel editor and workspace adapter together. */
 export const App = (): React.JSX.Element => {
   const [workspace, setWorkspace] = useState<StrudelReplWorkspace | null>(null);
@@ -54,6 +87,7 @@ export const App = (): React.JSX.Element => {
     message: 'No attempt captured yet.',
   });
   const [referenceRepository] = useState(() => new BrowserReferenceRepository());
+  const [checkpointRepository] = useState(() => new InMemoryCheckpointRepository());
   const [similarityAnalyzer] = useState(
     () => new EnergyEnvelopeAnalyzer(new MediabunnyAudioNormalizer()),
   );
@@ -67,6 +101,19 @@ export const App = (): React.JSX.Element => {
     tag: 'idle',
     message: 'Capture an attempt to compare its energy contour.',
   });
+  const [checkpoints, setCheckpoints] = useState<ReadonlyArray<Checkpoint>>([]);
+  const [currentCheckpointId, setCurrentCheckpointId] = useState<CheckpointId | null>(null);
+  const [webMcp, setWebMcp] = useState<WebMcpStatus>({
+    tag: 'waiting',
+    message: 'Waiting for the Strudel workspace…',
+  });
+  const operationInFlight = useRef(false);
+  const toolHandlers = useRef<WorkspaceToolHandlers | null>(null);
+  const referenceState = useRef(reference);
+  const captureState = useRef(capture);
+
+  referenceState.current = reference;
+  captureState.current = capture;
 
   useEffect(() => {
     if (reference.tag !== 'ready') {
@@ -152,65 +199,275 @@ export const App = (): React.JSX.Element => {
     void play();
   };
 
-  const captureAttempt = async (): Promise<void> => {
+  const evaluateAttempt = useCallback(
+    async (signal: AbortSignal): Promise<WorkspaceToolResult> => {
+      if (workspace === null)
+        return toolError('workspace_not_ready', 'Strudel editor is not ready');
+      if (operationInFlight.current) {
+        return toolError('iteration_in_progress', 'Another attempt is already being evaluated');
+      }
+
+      operationInFlight.current = true;
+      setCapture({ tag: 'recording', message: 'Evaluating, then recording 4 complete cycles…' });
+      setComparison({ tag: 'idle', message: 'Waiting for the captured attempt…' });
+      setStatus({ tag: 'starting', message: 'Preparing captured playback…' });
+
+      try {
+        const runIteration = makeRunIteration({
+          programWorkspace: workspace,
+          attemptRenderer: new StrudelAttemptRenderer(workspace),
+          referenceRepository,
+          similarityAnalyzer,
+          checkpointRepository,
+        });
+        const result = await runIteration({ duration: { cycles: 4 } }, signal);
+
+        if (result.isErr()) {
+          setCapture({ tag: 'failed', message: result.error.message });
+          setComparison({ tag: 'failed', message: result.error.message });
+          setStatus({ tag: 'failed', message: result.error.message });
+          return toolError(result.error._tag, result.error.message);
+        }
+
+        const checkpoint = result.value;
+        setCapture({
+          tag: 'ready',
+          message: `Captured ${checkpoint.audio.durationSeconds.toFixed(2)} seconds`,
+          attempt: checkpoint.audio,
+        });
+        setComparison({ tag: 'ready', comparison: checkpoint.comparison });
+        setCheckpoints(checkpointRepository.list());
+        setCurrentCheckpointId(checkpoint.id);
+        setStatus({ tag: 'stopped', message: `Checkpoint ${checkpoint.id} committed.` });
+
+        return {
+          ok: true,
+          referenceWindowSeconds: referenceComparisonWindowSeconds,
+          checkpoint: {
+            id: checkpoint.id,
+            parentId: checkpoint.parentId,
+            changeSummary: checkpoint.changeSummary,
+            durationSeconds: checkpoint.audio.durationSeconds,
+            completeness: checkpoint.comparison.completeness,
+            measurements: checkpoint.comparison.measurements,
+            observations: checkpoint.comparison.observations,
+            warnings: checkpoint.comparison.warnings,
+          },
+        };
+      } finally {
+        operationInFlight.current = false;
+      }
+    },
+    [checkpointRepository, referenceRepository, similarityAnalyzer, workspace],
+  );
+
+  const writeProgram = useCallback(
+    async (
+      codeInput: string,
+      changeSummary: string,
+      signal: AbortSignal,
+    ): Promise<WorkspaceToolResult> => {
+      if (signal.aborted) return toolError('operation_cancelled', 'Draft update was cancelled');
+      if (workspace === null)
+        return toolError('workspace_not_ready', 'Strudel editor is not ready');
+      if (operationInFlight.current) {
+        return toolError('iteration_in_progress', 'Wait for the active attempt to finish');
+      }
+
+      const code = strudelCode(codeInput);
+      if (code.isErr()) return toolError(code.error._tag, code.error.message);
+      const currentDraft = workspace.getDraft();
+      if (currentDraft.isErr()) {
+        return toolError(currentDraft.error._tag, currentDraft.error.message);
+      }
+      const written = workspace.writeDraft({
+        baseCheckpointId: currentDraft.value.baseCheckpointId,
+        code: code.value,
+        changeSummary,
+      });
+      if (written.isErr()) return toolError(written.error._tag, written.error.message);
+
+      setCapture({ tag: 'idle', message: 'Draft changed. Evaluate it to create an attempt.' });
+      setComparison({ tag: 'idle', message: 'Evaluate the updated draft for new feedback.' });
+      setStatus({ tag: 'ready', message: 'Agent updated the visible Strudel program.' });
+      return {
+        ok: true,
+        draft: {
+          code: code.value,
+          baseCheckpointId: currentDraft.value.baseCheckpointId,
+          changeSummary,
+        },
+      };
+    },
+    [workspace],
+  );
+
+  const listCheckpoints = useCallback(
+    async (signal: AbortSignal): Promise<WorkspaceToolResult> => {
+      if (signal.aborted) return toolError('operation_cancelled', 'Checkpoint list was cancelled');
+
+      return {
+        ok: true,
+        checkpoints: checkpointRepository.list().map((checkpoint) => ({
+          id: checkpoint.id,
+          parentId: checkpoint.parentId,
+          changeSummary: checkpoint.changeSummary,
+          durationSeconds: checkpoint.audio.durationSeconds,
+          similarity: checkpointSimilarity(checkpoint),
+        })),
+      };
+    },
+    [checkpointRepository],
+  );
+
+  const inspectCheckpoint = useCallback(
+    async (id: CheckpointId, signal: AbortSignal): Promise<WorkspaceToolResult> => {
+      if (signal.aborted)
+        return toolError('operation_cancelled', 'Checkpoint inspection was cancelled');
+      const result = await checkpointRepository.getById(id);
+      if (result.isErr()) return toolError(result.error._tag, result.error.message);
+      const checkpoint = result.value;
+
+      return {
+        ok: true,
+        inspectedCheckpoint: {
+          id: checkpoint.id,
+          parentId: checkpoint.parentId,
+          code: checkpoint.code,
+          changeSummary: checkpoint.changeSummary,
+          createdAt: checkpoint.createdAt.toISOString(),
+          durationSeconds: checkpoint.audio.durationSeconds,
+          completeness: checkpoint.comparison.completeness,
+          measurements: checkpoint.comparison.measurements,
+          observations: checkpoint.comparison.observations,
+          warnings: checkpoint.comparison.warnings,
+        },
+      };
+    },
+    [checkpointRepository],
+  );
+
+  const checkoutCheckpoint = useCallback(
+    async (id: CheckpointId, signal: AbortSignal): Promise<WorkspaceToolResult> => {
+      if (signal.aborted)
+        return toolError('operation_cancelled', 'Checkpoint restoration was cancelled');
+      if (workspace === null)
+        return toolError('workspace_not_ready', 'Strudel editor is not ready');
+      if (operationInFlight.current) {
+        return toolError('iteration_in_progress', 'Wait for the active attempt to finish');
+      }
+
+      operationInFlight.current = true;
+      try {
+        const stopped = await workspace.stop();
+        if (stopped.isErr()) return toolError(stopped.error._tag, stopped.error.message);
+
+        const result = await makeRestoreCheckpoint({
+          checkpointRepository,
+          programWorkspace: workspace,
+        })(id);
+        if (result.isErr()) return toolError(result.error._tag, result.error.message);
+
+        const checkpoint = result.value;
+        setCapture({
+          tag: 'ready',
+          message: `Restored ${checkpoint.id} · ${checkpoint.audio.durationSeconds.toFixed(2)} seconds`,
+          attempt: checkpoint.audio,
+        });
+        setComparison({ tag: 'ready', comparison: checkpoint.comparison });
+        setCurrentCheckpointId(checkpoint.id);
+        setStatus({
+          tag: 'stopped',
+          message: `Restored ${checkpoint.id}. The next evaluation will branch from it.`,
+        });
+
+        return {
+          ok: true,
+          restoredCheckpointId: checkpoint.id,
+          draft: {
+            code: checkpoint.code,
+            baseCheckpointId: checkpoint.id,
+            changeSummary: 'Restored checkpoint',
+          },
+        };
+      } finally {
+        operationInFlight.current = false;
+      }
+    },
+    [checkpointRepository, workspace],
+  );
+
+  toolHandlers.current = {
+    getWorkspaceState: async (signal) => {
+      if (signal.aborted) return toolError('operation_cancelled', 'Workspace read was cancelled');
+      if (workspace === null)
+        return toolError('workspace_not_ready', 'Strudel editor is not ready');
+      const draft = workspace.getDraft();
+      if (draft.isErr()) return toolError(draft.error._tag, draft.error.message);
+
+      return {
+        ok: true,
+        referenceLoaded: referenceState.current.tag === 'ready',
+        referenceWindowSeconds: referenceComparisonWindowSeconds,
+        operation: captureState.current.tag,
+        currentCheckpointId: checkpointRepository.getHeadId(),
+        checkpointCount: checkpointRepository.list().length,
+        draft: draft.value,
+      };
+    },
+    writeProgram: async (command, signal) =>
+      writeProgram(command.code, command.changeSummary, signal),
+    evaluateAttempt,
+    listCheckpoints,
+    inspectCheckpoint,
+    checkoutCheckpoint,
+  };
+
+  useEffect(() => {
     if (workspace === null) return;
 
-    const loadedReference = await referenceRepository.get();
-    if (loadedReference.isErr()) {
-      setCapture({ tag: 'failed', message: loadedReference.error.message });
-      return;
-    }
+    let disposed = false;
+    const registration = new AbortController();
+    const proxyHandlers: WorkspaceToolHandlers = {
+      getWorkspaceState: async (signal) =>
+        toolHandlers.current?.getWorkspaceState(signal) ??
+        toolError('workspace_not_ready', 'Workspace tools are not ready'),
+      writeProgram: async (command, signal) =>
+        toolHandlers.current?.writeProgram(command, signal) ??
+        toolError('workspace_not_ready', 'Workspace tools are not ready'),
+      evaluateAttempt: async (signal) =>
+        toolHandlers.current?.evaluateAttempt(signal) ??
+        toolError('workspace_not_ready', 'Workspace tools are not ready'),
+      listCheckpoints: async (signal) =>
+        toolHandlers.current?.listCheckpoints(signal) ??
+        toolError('workspace_not_ready', 'Workspace tools are not ready'),
+      inspectCheckpoint: async (id, signal) =>
+        toolHandlers.current?.inspectCheckpoint(id, signal) ??
+        toolError('workspace_not_ready', 'Workspace tools are not ready'),
+      checkoutCheckpoint: async (id, signal) =>
+        toolHandlers.current?.checkoutCheckpoint(id, signal) ??
+        toolError('workspace_not_ready', 'Workspace tools are not ready'),
+    };
 
-    setCapture({ tag: 'recording', message: 'Recording 4 complete cycles…' });
-    setComparison({ tag: 'idle', message: 'Waiting for the captured attempt…' });
-    setStatus({ tag: 'starting', message: 'Starting captured playback…' });
+    void registerWorkspaceTools(proxyHandlers, registration.signal).then((registered) => {
+      if (registered.isErr()) {
+        if (!disposed) setWebMcp({ tag: 'failed', message: registered.error.message });
+        return;
+      }
 
-    const draft = workspace.getDraft();
-    if (draft.isErr()) {
-      setCapture({ tag: 'failed', message: draft.error.message });
-      setStatus({ tag: 'failed', message: draft.error.message });
-      return;
-    }
-
-    const signal = new AbortController().signal;
-    const evaluated = await workspace.evaluate(draft.value.code, signal);
-    if (evaluated.isErr()) {
-      setCapture({ tag: 'failed', message: evaluated.error.message });
-      setStatus({ tag: 'failed', message: evaluated.error.message });
-      return;
-    }
-
-    setStatus({ tag: 'playing', message: 'Playing and recording Strudel master output…' });
-    const renderer = new StrudelAttemptRenderer(workspace);
-    const rendered = await renderer.render(evaluated.value, { cycles: 4 }, signal);
-
-    if (rendered.isErr()) {
-      setCapture({ tag: 'failed', message: rendered.error.message });
-      setStatus({ tag: 'failed', message: rendered.error.message });
-      return;
-    }
-
-    setCapture({
-      tag: 'ready',
-      message: `Captured ${rendered.value.durationSeconds.toFixed(2)} seconds`,
-      attempt: rendered.value,
+      if (disposed) return;
+      setWebMcp(
+        registered.value.supported
+          ? { tag: 'connected', message: '6 agent tools connected' }
+          : { tag: 'unsupported', message: 'WebMCP unavailable in this browser' },
+      );
     });
-    setComparison({ tag: 'analyzing', message: 'Normalizing and comparing both recordings…' });
-    setStatus({ tag: 'stopped', message: 'Capture complete. Comparing energy contours…' });
 
-    const analyzed = await similarityAnalyzer.compare(
-      loadedReference.value,
-      rendered.value,
-      signal,
-    );
-    if (analyzed.isErr()) {
-      setComparison({ tag: 'failed', message: analyzed.error.message });
-      return;
-    }
-
-    setComparison({ tag: 'ready', comparison: analyzed.value });
-    setStatus({ tag: 'stopped', message: 'Capture and comparison complete.' });
-  };
+    return () => {
+      disposed = true;
+      registration.abort();
+    };
+  }, [workspace]);
 
   const loadReference = async (event: ChangeEvent<HTMLInputElement>): Promise<void> => {
     const file = event.currentTarget.files?.item(0) ?? null;
@@ -232,7 +489,7 @@ export const App = (): React.JSX.Element => {
             }
         : {
             tag: 'ready',
-            message: `${loaded.value.durationSeconds.toFixed(2)}s · ${loaded.value.sampleRate.toLocaleString()} Hz · ${loaded.value.numberOfChannels} channel${loaded.value.numberOfChannels === 1 ? '' : 's'}`,
+            message: `${loaded.value.durationSeconds.toFixed(2)}s file · comparing first ${Math.min(loaded.value.durationSeconds, referenceComparisonWindowSeconds).toFixed(2)}s · ${loaded.value.sampleRate.toLocaleString()} Hz · ${loaded.value.numberOfChannels} channel${loaded.value.numberOfChannels === 1 ? '' : 's'}`,
             reference: loaded.value,
           },
     );
@@ -312,7 +569,7 @@ export const App = (): React.JSX.Element => {
             className="capture-button"
             data-state={capture.tag}
             disabled={workspace === null || capture.tag === 'recording' || transitionIsPending}
-            onClick={() => void captureAttempt()}
+            onClick={() => void evaluateAttempt(new AbortController().signal)}
             type="button"
           >
             {capture.tag === 'recording' ? '● Recording…' : '● Capture 4 cycles'}
@@ -346,9 +603,44 @@ export const App = (): React.JSX.Element => {
         </div>
       </section>
 
+      <section className="checkpoint-panel" aria-labelledby="checkpoint-heading">
+        <div>
+          <p className="eyebrow">05 · ITERATIONS</p>
+          <h2 id="checkpoint-heading">Checkpoint timeline</h2>
+          <p className="capture-message">
+            {checkpoints.length === 0
+              ? 'Successful evaluations will appear here.'
+              : `${checkpoints.length} committed attempt${checkpoints.length === 1 ? '' : 's'}`}
+          </p>
+        </div>
+        <ol className="checkpoint-list">
+          {checkpoints.map((checkpoint) => {
+            const similarity = checkpointSimilarity(checkpoint);
+            return (
+              <li data-current={checkpoint.id === currentCheckpointId} key={checkpoint.id}>
+                <button
+                  aria-label={`Restore checkpoint ${checkpoint.id}`}
+                  aria-pressed={checkpoint.id === currentCheckpointId}
+                  disabled={capture.tag === 'recording' || transitionIsPending}
+                  onClick={() =>
+                    void checkoutCheckpoint(checkpoint.id, new AbortController().signal)
+                  }
+                  type="button"
+                >
+                  <span>{checkpoint.id}</span>
+                  <strong>{Math.round(similarity * 100)}%</strong>
+                  <small>{checkpoint.changeSummary}</small>
+                </button>
+              </li>
+            );
+          })}
+        </ol>
+      </section>
+
       <footer>
         <span>Reference input — connected</span>
         <span>Master output capture — connected</span>
+        <span>WebMCP — {webMcp.message}</span>
       </footer>
     </main>
   );

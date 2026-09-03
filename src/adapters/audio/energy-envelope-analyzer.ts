@@ -11,6 +11,9 @@ import type { AudioNormalizer, SimilarityAnalyzer } from '../../domain/ports.ts'
 
 const envelopeFrameCount = 32;
 
+/** Duration of the uploaded reference considered by every comparison. */
+export const referenceComparisonWindowSeconds = 10;
+
 const rms = (samples: Float32Array, start: number, end: number): number => {
   let sum = 0;
   for (let index = start; index < end; index += 1) {
@@ -33,6 +36,19 @@ const peakNormalize = (envelope: ReadonlyArray<number>): ReadonlyArray<number> =
 };
 
 const overallRms = (audio: NormalizedAudio): number => rms(audio.samples, 0, audio.samples.length);
+
+const leadingReferenceWindow = (audio: NormalizedAudio): NormalizedAudio => {
+  const sampleCount = Math.min(
+    audio.samples.length,
+    Math.floor(audio.sampleRate * referenceComparisonWindowSeconds),
+  );
+
+  return {
+    samples: audio.samples.subarray(0, sampleCount),
+    sampleRate: audio.sampleRate,
+    durationSeconds: sampleCount / audio.sampleRate,
+  };
+};
 
 /** Compares the relative loudness contour of reference and attempt PCM. */
 export class EnergyEnvelopeAnalyzer implements SimilarityAnalyzer {
@@ -71,14 +87,15 @@ export class EnergyEnvelopeAnalyzer implements SimilarityAnalyzer {
       );
     }
 
-    const referenceEnvelope = peakNormalize(energyEnvelope(normalizedReference.value));
+    const referenceWindow = leadingReferenceWindow(normalizedReference.value);
+    const referenceEnvelope = peakNormalize(energyEnvelope(referenceWindow));
     const attemptEnvelope = peakNormalize(energyEnvelope(normalizedAttempt.value));
     const distance = referenceEnvelope.reduce(
       (total, value, index) => total + Math.abs(value - (attemptEnvelope[index] ?? 0)),
       0,
     );
     const similarity = Math.max(0, Math.min(1, 1 - distance / envelopeFrameCount));
-    const referenceRms = overallRms(normalizedReference.value);
+    const referenceRms = overallRms(referenceWindow);
     const attemptRms = overallRms(normalizedAttempt.value);
     const loudnessRatio = referenceRms === 0 ? 1 : attemptRms / referenceRms;
     const loudnessObservation =

@@ -136,6 +136,12 @@ export class StrudelReplWorkspace implements ProgramWorkspace {
     return this.#replaceDraft(program.code, program.baseCheckpointId, 'Restored checkpoint');
   }
 
+  /** Makes a committed iteration the parent of the next editor draft. */
+  markCommitted(checkpointId: CheckpointId): void {
+    this.#baseCheckpointId = checkpointId;
+    this.#changeSummary = 'Continue from committed attempt';
+  }
+
   /** Stops scheduler playback without changing the current draft or branch metadata. */
   async stop(): Promise<Result<void, StrudelPlaybackFailed>> {
     const editor = this.#element.editor;

@@ -59,6 +59,7 @@ const makeDependencies = (): RunIterationDependencies => ({
     ),
     evaluate: vi.fn(async () => Result.ok({ code, cycleDurationSeconds: 1 })),
     restore: vi.fn(() => Result.ok(undefined)),
+    markCommitted: vi.fn(),
   },
   attemptRenderer: {
     render: vi.fn(async () => Result.ok(renderedAttempt)),
@@ -78,6 +79,7 @@ const makeDependencies = (): RunIterationDependencies => ({
         }),
       ),
     ),
+    setHead: vi.fn(),
     commit: vi.fn(async (candidate) => Result.ok(checkpoint(candidate))),
   },
 });
@@ -97,6 +99,7 @@ describe('runIteration', () => {
       comparison,
       changeSummary: 'Changed the notes',
     });
+    expect(dependencies.programWorkspace.markCommitted).toHaveBeenCalledWith(checkpointIdA1);
   });
 
   it('does not read the draft or commit when the reference is absent', async () => {
@@ -111,5 +114,6 @@ describe('runIteration', () => {
     expect(result.isErr()).toBe(true);
     expect(dependencies.programWorkspace.getDraft).not.toHaveBeenCalled();
     expect(dependencies.checkpointRepository.commit).not.toHaveBeenCalled();
+    expect(dependencies.programWorkspace.markCommitted).not.toHaveBeenCalled();
   });
 });

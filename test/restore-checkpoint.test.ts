@@ -41,12 +41,14 @@ type TestPorts = Readonly<{
 const makePorts = (): TestPorts => ({
   checkpointRepository: {
     getById: vi.fn(async () => Result.ok(checkpoint)),
+    setHead: vi.fn(),
     commit: vi.fn(async () => Result.ok(checkpoint)),
   },
   programWorkspace: {
     getDraft: vi.fn(() => Result.ok({ baseCheckpointId: id, code, changeSummary: 'Draft' })),
     evaluate: vi.fn(async () => Result.ok({ code, cycleDurationSeconds: 1 })),
     restore: vi.fn(() => Result.ok(undefined)),
+    markCommitted: vi.fn(),
   },
 });
 
@@ -62,6 +64,7 @@ describe('restoreCheckpoint', () => {
       baseCheckpointId: id,
       code,
     });
+    expect(ports.checkpointRepository.setHead).toHaveBeenCalledWith(id);
   });
 
   it('does not modify the editor when the checkpoint cannot be loaded', async () => {
@@ -80,5 +83,6 @@ describe('restoreCheckpoint', () => {
 
     expect(result.isErr()).toBe(true);
     expect(ports.programWorkspace.restore).not.toHaveBeenCalled();
+    expect(ports.checkpointRepository.setHead).not.toHaveBeenCalled();
   });
 });

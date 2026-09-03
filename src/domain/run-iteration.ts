@@ -44,6 +44,8 @@ export const makeRunIteration = (dependencies: RunIterationDependencies): RunIte
         }),
       );
 
+      programWorkspace.markCommitted(checkpoint.id);
+
       return Result.ok(checkpoint);
     });
 };

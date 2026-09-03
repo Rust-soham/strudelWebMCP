@@ -38,6 +38,8 @@ export interface ProgramWorkspace {
   ): Promise<Result<EvaluatedProgram, StrudelEvaluationFailed | OperationCancelled>>;
   /** Replaces the editor draft and makes subsequent attempts branch from this checkpoint. */
   restore(program: RestoredProgram): Result<void, DraftWriteFailed>;
+  /** Advances branch metadata after an iteration has been committed. */
+  markCommitted(checkpointId: CheckpointId): void;
 }
 
 export interface AttemptRenderer {
@@ -72,6 +74,8 @@ export interface AudioNormalizer {
 
 export interface CheckpointRepository {
   getById(id: CheckpointId): Promise<Result<Checkpoint, CheckpointNotFound | CheckpointReadFailed>>;
+  /** Moves the active branch head to a checkpoint already read from this repository. */
+  setHead(id: CheckpointId): void;
   /** Atomically appends an immutable attempt under its expected parent. */
   commit(
     candidate: CheckpointCandidate,

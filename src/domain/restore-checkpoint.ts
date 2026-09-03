@@ -30,6 +30,7 @@ export const makeRestoreCheckpoint = (
         baseCheckpointId: checkpoint.id,
         code: checkpoint.code,
       });
+      checkpointRepository.setHead(checkpoint.id);
 
       return Result.ok(checkpoint);
     });

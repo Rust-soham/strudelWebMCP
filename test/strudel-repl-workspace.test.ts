@@ -89,6 +89,18 @@ describe('StrudelReplWorkspace', () => {
     );
   });
 
+  it('advances the draft parent after a checkpoint commit', () => {
+    const harness = makeEditorHarness();
+    const workspace = new StrudelReplWorkspace(harness.element);
+
+    workspace.markCommitted(parentId);
+
+    const draft = unwrap(workspace.getDraft());
+
+    expect(draft.baseCheckpointId).toBe(parentId);
+    expect(draft.changeSummary).toBe('Continue from committed attempt');
+  });
+
   it('delegates stop to Strudel without changing the draft', async () => {
     const harness = makeEditorHarness();
     const workspace = new StrudelReplWorkspace(harness.element);

@@ -46,4 +46,30 @@ describe('EnergyEnvelopeAnalyzer', () => {
       expect(result.value.observations).toContain('The energy contour is close to the reference.');
     }
   });
+
+  it('ignores reference audio after the first ten seconds', async () => {
+    const matchingWindow = Array.from({ length: 100 }, (_, index) => index / 100);
+    const referenceAudio: NormalizedAudio = {
+      samples: Float32Array.from([...matchingWindow, ...Array.from({ length: 100 }, () => 1)]),
+      sampleRate: 10,
+      durationSeconds: 20,
+    };
+    const attemptAudio: NormalizedAudio = {
+      samples: Float32Array.from(matchingWindow),
+      sampleRate: 10,
+      durationSeconds: 10,
+    };
+    const normalizer: AudioNormalizer = {
+      normalize: async (blob) => Result.ok(blob === referenceBlob ? referenceAudio : attemptAudio),
+    };
+
+    const result = await new EnergyEnvelopeAnalyzer(normalizer).compare(
+      reference,
+      attempt,
+      new AbortController().signal,
+    );
+
+    expect(result.isOk()).toBe(true);
+    if (result.isOk()) expect(result.value.measurements[0]?.similarity).toBeCloseTo(1);
+  });
 });
