@@ -6,6 +6,12 @@ export class ReferenceNotLoaded extends TaggedError('ReferenceNotLoaded')<{
   readonly message: string;
 }> {}
 
+export class ReferenceLoadFailed extends TaggedError('ReferenceLoadFailed')<{
+  readonly cause: unknown;
+  readonly fileName: string;
+  readonly message: string;
+}> {}
+
 export class DraftReadFailed extends TaggedError('DraftReadFailed')<{
   readonly cause: unknown;
   readonly message: string;

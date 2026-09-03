@@ -196,6 +196,7 @@ h2 {
   min-height: 30rem;
 }
 
+.reference-panel,
 .attempt-panel {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(20rem, 1fr);
@@ -214,11 +215,41 @@ h2 {
   font-size: 0.8rem;
 }
 
+.reference-controls,
 .capture-controls {
   display: flex;
   align-items: center;
   justify-content: flex-end;
   gap: 1rem;
+}
+
+.file-button {
+  display: inline-flex;
+  min-width: 10rem;
+  justify-content: center;
+  border: 1px solid var(--yellow);
+  padding: 0.65rem 1.1rem;
+  color: #11120f;
+  background: var(--yellow);
+  font-family: 'IBM Plex Mono', 'SFMono-Regular', Consolas, monospace;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.file-button:has(input:disabled) {
+  cursor: wait;
+  opacity: 0.45;
+}
+
+.file-button input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
 }
 
 .capture-button {
@@ -257,10 +288,12 @@ footer {
     margin-top: 1.5rem;
   }
 
+  .reference-panel,
   .attempt-panel {
     grid-template-columns: 1fr;
   }
 
+  .reference-controls,
   .capture-controls {
     align-items: stretch;
     flex-direction: column;

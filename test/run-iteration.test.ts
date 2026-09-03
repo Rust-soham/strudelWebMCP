@@ -41,7 +41,15 @@ const checkpoint = (candidate: CheckpointCandidate): Checkpoint => ({
 const makeDependencies = (): RunIterationDependencies => ({
   referenceRepository: {
     get: vi.fn(async () =>
-      Result.ok({ id: 'reference', durationSeconds: 4, sampleRate: 48_000, numberOfChannels: 2 }),
+      Result.ok({
+        id: 'reference',
+        blob: new Blob(['reference'], { type: 'audio/wav' }),
+        fileName: 'reference.wav',
+        mimeType: 'audio/wav',
+        durationSeconds: 4,
+        sampleRate: 48_000,
+        numberOfChannels: 2,
+      }),
     ),
   },
   programWorkspace: {

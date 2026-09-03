@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type ChangeEvent } from 'react';
 
+import { BrowserReferenceRepository } from '../adapters/browser/browser-reference-repository.ts';
 import { StrudelAttemptRenderer } from '../adapters/strudel/strudel-attempt-renderer.ts';
 import type { StrudelReplWorkspace } from '../adapters/strudel/strudel-repl-workspace.ts';
-import type { RenderedAttempt } from '../domain/model.ts';
+import type { ReferenceAudio, RenderedAttempt } from '../domain/model.ts';
 import { StrudelEditor } from './strudel-editor.tsx';
 
 const initialCode = `setcpm(112 / 4)
@@ -27,6 +28,12 @@ type CaptureStatus =
   | Readonly<{ tag: 'ready'; message: string; attempt: RenderedAttempt }>
   | Readonly<{ tag: 'failed'; message: string }>;
 
+type ReferenceStatus =
+  | Readonly<{ tag: 'idle'; message: string }>
+  | Readonly<{ tag: 'loading'; message: string }>
+  | Readonly<{ tag: 'ready'; message: string; reference: ReferenceAudio }>
+  | Readonly<{ tag: 'failed'; message: string }>;
+
 /** The first browser shell proving the real Strudel editor and workspace adapter together. */
 export const App = (): React.JSX.Element => {
   const [workspace, setWorkspace] = useState<StrudelReplWorkspace | null>(null);
@@ -38,7 +45,24 @@ export const App = (): React.JSX.Element => {
     tag: 'idle',
     message: 'No attempt captured yet.',
   });
+  const [referenceRepository] = useState(() => new BrowserReferenceRepository());
+  const [reference, setReference] = useState<ReferenceStatus>({
+    tag: 'idle',
+    message: 'Upload the original clip once. Every iteration will reuse it.',
+  });
+  const [referenceUrl, setReferenceUrl] = useState<string | null>(null);
   const [attemptUrl, setAttemptUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (reference.tag !== 'ready') {
+      setReferenceUrl(null);
+      return;
+    }
+
+    const url = URL.createObjectURL(reference.reference.blob);
+    setReferenceUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [reference]);
 
   useEffect(() => {
     if (capture.tag !== 'ready') {
@@ -115,6 +139,13 @@ export const App = (): React.JSX.Element => {
 
   const captureAttempt = async (): Promise<void> => {
     if (workspace === null) return;
+
+    const loadedReference = await referenceRepository.get();
+    if (loadedReference.isErr()) {
+      setCapture({ tag: 'failed', message: loadedReference.error.message });
+      return;
+    }
+
     setCapture({ tag: 'recording', message: 'Recording 4 complete cycles…' });
     setStatus({ tag: 'starting', message: 'Starting captured playback…' });
 
@@ -149,6 +180,31 @@ export const App = (): React.JSX.Element => {
       attempt: rendered.value,
     });
     setStatus({ tag: 'stopped', message: 'Capture complete. Playback stopped.' });
+  };
+
+  const loadReference = async (event: ChangeEvent<HTMLInputElement>): Promise<void> => {
+    const file = event.currentTarget.files?.item(0) ?? null;
+    event.currentTarget.value = '';
+    if (file === null) return;
+
+    const previousReference = reference.tag === 'ready' ? reference.reference : null;
+    setReference({ tag: 'loading', message: `Decoding ${file.name}…` });
+    const loaded = await referenceRepository.load(file, new AbortController().signal);
+    setReference(
+      loaded.isErr()
+        ? previousReference === null
+          ? { tag: 'failed', message: loaded.error.message }
+          : {
+              tag: 'ready',
+              message: `${loaded.error.message}. Keeping ${previousReference.fileName}.`,
+              reference: previousReference,
+            }
+        : {
+            tag: 'ready',
+            message: `${loaded.value.durationSeconds.toFixed(2)}s · ${loaded.value.sampleRate.toLocaleString()} Hz · ${loaded.value.numberOfChannels} channel${loaded.value.numberOfChannels === 1 ? '' : 's'}`,
+            reference: loaded.value,
+          },
+    );
   };
 
   return (
@@ -186,9 +242,35 @@ export const App = (): React.JSX.Element => {
         <StrudelEditor initialCode={initialCode} onWorkspaceReady={handleWorkspaceReady} />
       </section>
 
+      <section className="reference-panel" aria-labelledby="reference-heading">
+        <div>
+          <p className="eyebrow">02 · REFERENCE</p>
+          <h2 id="reference-heading">
+            {reference.tag === 'ready' ? reference.reference.fileName : 'Load the original clip'}
+          </h2>
+          <p className="capture-message" role="status">
+            {reference.message}
+          </p>
+        </div>
+        <div className="reference-controls">
+          <label className="file-button">
+            {reference.tag === 'loading' ? 'Decoding…' : 'Choose audio'}
+            <input
+              accept="audio/*,.wav,.mp3,.m4a,.aac,.ogg,.flac,.webm"
+              disabled={reference.tag === 'loading' || capture.tag === 'recording'}
+              onChange={(event) => void loadReference(event)}
+              type="file"
+            />
+          </label>
+          {referenceUrl === null ? null : (
+            <audio aria-label="Reference audio" controls src={referenceUrl} />
+          )}
+        </div>
+      </section>
+
       <section className="attempt-panel" aria-labelledby="attempt-heading">
         <div>
-          <p className="eyebrow">02 · CAPTURED ATTEMPT</p>
+          <p className="eyebrow">03 · CAPTURED ATTEMPT</p>
           <h2 id="attempt-heading">Render the live program</h2>
           <p className="capture-message" role="status">
             {capture.message}
@@ -211,7 +293,7 @@ export const App = (): React.JSX.Element => {
       </section>
 
       <footer>
-        <span>Reference input — next slice</span>
+        <span>Reference input — connected</span>
         <span>Master output capture — connected</span>
       </footer>
     </main>

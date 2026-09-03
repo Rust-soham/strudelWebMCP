@@ -37,6 +37,9 @@ export const strudelCode = (input: string): Result<StrudelCode, InvalidStrudelCo
 
 export type ReferenceAudio = Readonly<{
   id: string;
+  blob: Blob;
+  fileName: string;
+  mimeType: string;
   durationSeconds: number;
   sampleRate: number;
   numberOfChannels: number;
