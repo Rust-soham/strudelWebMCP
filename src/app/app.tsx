@@ -103,7 +103,7 @@ export const App = (): React.JSX.Element => {
   });
   const [checkpoints, setCheckpoints] = useState<ReadonlyArray<Checkpoint>>([]);
   const [currentCheckpointId, setCurrentCheckpointId] = useState<CheckpointId | null>(null);
-  const [checkpointHistoryReady, setCheckpointHistoryReady] = useState(false);
+  const [hydratedWorkspace, setHydratedWorkspace] = useState<StrudelReplWorkspace | null>(null);
   const [webMcp, setWebMcp] = useState<WebMcpStatus>({
     tag: 'waiting',
     message: 'Waiting for the Strudel workspace…',
@@ -117,8 +117,8 @@ export const App = (): React.JSX.Element => {
   captureState.current = capture;
 
   useEffect(() => {
+    setHydratedWorkspace(null);
     if (workspace === null) {
-      setCheckpointHistoryReady(false);
       return;
     }
 
@@ -152,7 +152,7 @@ export const App = (): React.JSX.Element => {
         setStatus({ tag: 'stopped', message: `Restored persisted checkpoint ${checkpoint.id}.` });
       }
 
-      setCheckpointHistoryReady(true);
+      setHydratedWorkspace(workspace);
     });
     return () => {
       cancelled = true;
@@ -487,7 +487,7 @@ export const App = (): React.JSX.Element => {
   };
 
   useEffect(() => {
-    if (workspace === null || !checkpointHistoryReady) return;
+    if (workspace === null || hydratedWorkspace !== workspace) return;
 
     let disposed = false;
     const registration = new AbortController();
@@ -530,7 +530,7 @@ export const App = (): React.JSX.Element => {
       disposed = true;
       registration.abort();
     };
-  }, [checkpointHistoryReady, workspace]);
+  }, [hydratedWorkspace, workspace]);
 
   const loadReference = async (event: ChangeEvent<HTMLInputElement>): Promise<void> => {
     const file = event.currentTarget.files?.item(0) ?? null;
