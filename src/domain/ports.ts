@@ -32,6 +32,7 @@ export interface ProgramWorkspace {
   getDraft(): Result<DraftProgram, DraftReadFailed>;
   evaluate(
     code: StrudelCode,
+    signal: AbortSignal,
   ): Promise<Result<EvaluatedProgram, StrudelEvaluationFailed | OperationCancelled>>;
   /** Replaces the editor draft and makes subsequent attempts branch from this checkpoint. */
   restore(program: RestoredProgram): Result<void, DraftWriteFailed>;

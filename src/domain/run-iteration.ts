@@ -27,7 +27,7 @@ export const makeRunIteration = (dependencies: RunIterationDependencies): RunIte
     Result.gen(async function* () {
       const reference = yield* Result.await(referenceRepository.get());
       const draft = yield* programWorkspace.getDraft();
-      const program = yield* Result.await(programWorkspace.evaluate(draft.code));
+      const program = yield* Result.await(programWorkspace.evaluate(draft.code, signal));
       const attempt = yield* Result.await(
         attemptRenderer.render(program, command.duration, signal),
       );
